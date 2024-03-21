@@ -1,0 +1,58 @@
+using Base.Sys: WORD_SIZE
+using Base.Threads: inttypes, llvmtypes
+using Core.Intrinsics: llvmcall
+
+const unordered = Val{:unordered}()
+const monotonic = Val{:monotonic}()
+const acquire = Val{:acquire}()
+const release = Val{:release}()
+const acq_rel = Val{:acq_rel}()
+const seq_cst = Val{:seq_cst}()
+
+const orderings = [:unordered, :monotonic, :acquire, :release, :acq_rel, :seq_cst]
+
+for typ in inttypes
+    lt = llvmtypes[typ]
+    rt = "$lt, $lt*"
+    align = sizeof(typ)
+    # align = 64
+    # align = Base.gc_alignment(typ)
+
+    for ord in orderings
+        ord ∉ (:release, :acq_rel) || continue
+        func_def = """
+        @inline function load_$(ord)(x::Ptr{$typ})
+            return llvmcall(
+                ""\"
+                %ptr = inttoptr i$WORD_SIZE %0 to $lt*
+                %rv = load atomic $rt %ptr $ord, align $align
+                ret $lt %rv
+                ""\",
+                $typ,
+                Tuple{Ptr{$typ}},
+                x,
+            )
+        end
+        """
+        eval(Meta.parse(func_def))
+    end
+
+    for ord in orderings
+        func_def = """
+        @inline function store_$(ord)!(x::Ptr{$typ}, v::$typ)
+            return llvmcall(
+                ""\"
+                %ptr = inttoptr i$WORD_SIZE %0 to $lt*
+                store atomic $lt %1, $lt* %ptr $ord, align $align
+                ret void
+                ""\",
+                Cvoid,
+                Tuple{Ptr{$typ},$typ},
+                x,
+                v,
+            )
+        end
+        """
+        eval(Meta.parse(func_def))
+    end
+end
