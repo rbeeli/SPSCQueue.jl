@@ -1,5 +1,7 @@
 # SPSCQueue.jl
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A fast single-producer, single-consumer queue implementation in pure Julia.
 
 The SPSC queue allows to push variable-sized binary messages into a queue from one thread, and pop them from another thread.
