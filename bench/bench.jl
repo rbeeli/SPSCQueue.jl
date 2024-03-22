@@ -87,11 +87,11 @@ function run()
     #     shm_flags=Base.Filesystem.JL_O_RDWR,
     #     shm_mode=0o666
     # )
-    # storage = SPSCStorage(buffer_ptr, Int64(shm_size), false)
+    # # storage = SPSCStorage(buffer_ptr, shm_size)
+    # storage = SPSCStorage(buffer_ptr)
 
     println("storage_size:       $(storage.storage_size)")
     println("buffer_size:        $(storage.buffer_size)")
-    println("buffer_offset:      $(storage.buffer_offset)")
     println("read_ix:            $(unsafe_load(storage.read_ix, :acquire))")
     println("write_ix:           $(unsafe_load(storage.write_ix, :acquire))")
 
@@ -117,7 +117,7 @@ println("n threads: $(Base.Threads.nthreads())")
 
 run()
 
-# julia --project=. --threads=24 src/SPSCQueue.jl
+# julia --project=. --threads=24 bench/bench.jl
 
 # using ProfileView
 # ProfileView.@profview run()

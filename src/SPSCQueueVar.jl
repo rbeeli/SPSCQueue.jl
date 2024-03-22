@@ -64,8 +64,6 @@ If successfully enqueued, returns `true`.
     # update write index
     unsafe_store!(queue.storage.write_ix, next_write_ix, :release)
 
-    # println("enqueued message write_ix=$write_ix next_write_ix=$next_write_ix")
-
     true # success
 end
 

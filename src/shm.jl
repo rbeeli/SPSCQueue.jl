@@ -73,12 +73,11 @@ function shm_open(
     ptr = reinterpret(Ptr{UInt8}, c_ptr)
 
     fd, size, ptr
-    # ccall(:close, Int, (Int, ), fd_mem)
 end
 
-# function unlink_shm(shm_name)
-#     res::Int = ccall(:shm_unlink, Int, (Ptr{UInt8}, ), shm_name)
-#     if res == -1
-#         error("shm_unlink() failed")
-#     end
-# end
+function unlink_shm(shm_name)
+    res::Int = ccall(:shm_unlink, Int, (Ptr{UInt8}, ), shm_name)
+    if res == -1
+        error("shm_unlink() failed")
+    end
+end

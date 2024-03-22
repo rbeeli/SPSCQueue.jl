@@ -21,11 +21,14 @@ The queue storage can be allocated on the heap, or in shared memory.
 The queue is implemented in the `SPSCQueue` module, and provides the following functions:
 
 ```julia
-# create storage for the queue
-SPSCStorage(buffer_size::Int64)
+# create storage memory for queue on heap
+SPSCStorage(storage_size::Integer)
 
-# create storage for the queue from a UInt8 pointer
-SPSCStorage(ptr::Ptr{UInt8}, storage_size::Int64, owns_buffer::Bool)
+# create new storage for queue from an UInt8 pointer
+SPSCStorage(ptr::Ptr{T}, storage_size::Integer; finalizer_fn::Function)
+
+# open existing storage for queue from an UInt8 pointer
+SPSCStorage(ptr::Ptr{T}; finalizer_fn::Function)
 
 # create a variable-element size SPSC queue
 SPSCQueueVar(storage::SPSCStorage)
@@ -127,24 +130,26 @@ See [examples/basic.jl](examples/basic.jl) for the example file.
 ### Shared memory
 
 The queue storage can be allocated in shared memory, which allows to use the queue for inter-process communication.
-Instead of using `SPSCStorage(buffer_size)`, use `SPSCStorage(buffer_ptr, buffer_size, false)` to create the storage from a pointer to shared memory.
-`SPSCStorage` can work with arbitrary `Ptr{UInt8}` types. It is the user's responsibility to manage the shared memory and provide the correct pointer and size.
+Instead of using `SPSCStorage(buffer_size)`, use `SPSCStorage(ptr, storage_size; finalizer_fn)` to create the storage from a pointer to shared memory.
+
+`SPSCStorage` can work with arbitrary `Ptr{T}` types. It is the user's responsibility to manage the shared memory and provide the correct pointer and size. Optionally, a finalizer function can be provided to clean up the shared memory when the storage is no longer needed.
 
 Example of creating a shared memory queue (Linux only in this example):
 
 ```julia
 buffer_size = 100_000 # bytes
+shm_size = buffer_size + SPSC_STORAGE_BUFFER_OFFSET
 
 # works only on Linux (see src/shm.jl for details)
-shm_fd, shm_size, buffer_ptr = shm_open(
+shm_fd, shm_size, shm_ptr = shm_open(
     "my_shared_memory",
     shm_flags = Base.Filesystem.JL_O_CREAT |
         Base.Filesystem.JL_O_RDWR |
         Base.Filesystem.JL_O_TRUNC,
     shm_mode=0o666,
-    size=buffer_size
+    size=shm_size
 )
-storage = SPSCStorage(buffer_ptr, Int64(shm_size), false)
+storage = SPSCStorage(shm_ptr, shm_size)
 ```
 
 See [examples/shared_memory.jl](examples/shared_memory.jl) for the example file.

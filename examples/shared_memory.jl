@@ -54,17 +54,18 @@ end
 
 function run()
     buffer_size = 100_000 # bytes
+    shm_size = buffer_size + SPSC_STORAGE_BUFFER_OFFSET
 
     # works only on Linux (see src/shm.jl for details)
-    shm_fd, shm_size, buffer_ptr = shm_open(
+    shm_fd, shm_size, shm_ptr = shm_open(
         "my_shared_memory",
-        shm_flags = Base.Filesystem.JL_O_CREAT |
-            Base.Filesystem.JL_O_RDWR |
-            Base.Filesystem.JL_O_TRUNC,
+        shm_flags=Base.Filesystem.JL_O_CREAT |
+                  Base.Filesystem.JL_O_RDWR |
+                  Base.Filesystem.JL_O_TRUNC,
         shm_mode=0o666,
-        size=buffer_size
+        size=shm_size
     )
-    storage = SPSCStorage(buffer_ptr, Int64(shm_size), false)
+    storage = SPSCStorage(shm_ptr, shm_size)
 
     # create variable-element size SPSC queue
     queue = SPSCQueueVar(storage)
@@ -76,6 +77,9 @@ function run()
 
     wait(p_thread)
     wait(c_thread)
+
+    unlink_shm("my_shared_memory")
+    close(shm_fd)
 end
 
 run()

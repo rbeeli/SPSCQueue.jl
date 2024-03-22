@@ -1,13 +1,12 @@
+const SPSC_STORAGE_CACHE_LINE_SIZE::UInt64 = 64
+const SPSC_STORAGE_BUFFER_OFFSET::UInt64 = 3 * 64
+
 """
-    SPSCStorage(buffer_size::Integer)
-    SPSCStorage(ptr::Ptr{UInt8}, storage_size::Integer, owns_buffer::Bool)
-    SPSCStorage(ptr::Ptr{UInt8}, owns_buffer::Bool, malloc_ptr::Ptr{UInt8})
+    SPSCStorage(storage_size::Integer)
+    SPSCStorage(ptr::Ptr{T}, storage_size::Integer; finalizer_fn::Function)
+    SPSCStorage(ptr::Ptr{T}; finalizer_fn::Function)
 
 Encapsulates the memory storage for SPSC queues.
-
-NOTE: If `owns_buffer` is `true`, the memory will be freed
-when the object is no longer referenced through a call to C's `free`.
-This does not work for shared memory, thus shared memory must be freed manually.
 
 The storage underlying the SPSC queues has the following
 fixed, contiguous memory layout:
@@ -16,97 +15,103 @@ fixed, contiguous memory layout:
 |----------------|----------------|----------------|
 | 0              | 8              | Storage size   |
 | 8              | 56             | Pad            |
-| 64             | 8              | Buffer size    |
+| 64             | 8              | Read index     |
 | 72             | 56             | Pad            |
-| 128            | 8              | Buffer offset  |
+| 128            | 8              | Write index    |
 | 136            | 56             | Pad            |
-| 192            | 8              | Read index     |
-| 200            | 56             | Pad            |
-| 256            | 8              | Write index    |
-| 264            | 56             | Pad            |
-| 320            | buffer_size    | Data buffer    |
+| 192            | buffer_size    | Data buffer    |
 
 Pad is used to align the buffer to 64 bytes (cache line size).
 
-This memory layout enables us to use this data structure
-inside shared memory, and potentially as IPC mechanism
-to other languages, e.g. C++.
+This memory layout ensure cache line alignment for the read and write indices,
+and can be used inside shared memory, e.g. as IPC mechanism to other languages (processes).
 
-The struct is declared as immutable to ensure that the
+The struct is declared as mutable to ensure that the
 finalizer is called by the GC when the object is no longer referenced.
+An optional `finalizer_fn` function can be provided to perform additional cleanup
+when the object is finalized by the GC, e.g. `free`ing  `malloc`ed memory.
 """
 mutable struct SPSCStorage
     const storage_size::UInt64
     const buffer_size::UInt64
-    const buffer_offset::UInt64
-    const malloc_ptr::Ptr{UInt8}
     const storage_ptr::Ptr{UInt8}
     const buffer_ptr::Ptr{UInt8}
-    const owns_buffer::Bool
+    const finalizer_fn::Function
     read_ix::Ptr{UInt64}
     write_ix::Ptr{UInt64}
 
-    SPSCStorage(ptr::Ptr{UInt8}, owns_buffer::Bool, malloc_ptr::Ptr{UInt8}) = begin
-        if malloc_ptr == C_NULL
-            malloc_ptr = ptr
-        end
-        # read existing SPSCStorage from memory
-        buffer_offset::UInt64 = unsafe_load(reinterpret(Ptr{UInt64}, ptr + 2 * 64))
+    """
+    Reads the SPSC storage data from an existing initialized memory region.
+    """
+    SPSCStorage(ptr::Ptr{T}; finalizer_fn::Function=s -> nothing) where T = begin
+        ptr8::Ptr{UInt8} = reinterpret(Ptr{UInt8}, ptr)
+        storage_size::UInt64 = unsafe_load(reinterpret(Ptr{UInt64}, ptr8))
+        buffer_size::UInt64 = storage_size - SPSC_STORAGE_BUFFER_OFFSET
+
         obj = new(
-            unsafe_load(reinterpret(Ptr{UInt64}, ptr)), # storage size
-            unsafe_load(reinterpret(Ptr{UInt64}, ptr + 1 * 64)), # buffer size
-            unsafe_load(reinterpret(Ptr{UInt64}, ptr + 2 * 64)), # buffer offset
-            malloc_ptr, # malloc_ptr
-            ptr, # storage_ptr
-            ptr + buffer_offset, # buffer_ptr
-            owns_buffer,
-            reinterpret(Ptr{UInt64}, ptr + 3 * 64), # read_ix (0-based)
-            reinterpret(Ptr{UInt64}, ptr + 4 * 64), # write_ix (0-based)
+            storage_size, # storage size
+            buffer_size, # buffer size
+            ptr8, # storage_ptr
+            ptr8 + SPSC_STORAGE_BUFFER_OFFSET, # buffer_ptr
+            finalizer_fn,
+            reinterpret(Ptr{UInt64}, ptr8 + SPSC_STORAGE_CACHE_LINE_SIZE), # read_ix (0-based)
+            reinterpret(Ptr{UInt64}, ptr8 + SPSC_STORAGE_CACHE_LINE_SIZE * 2), # write_ix (0-based)
         )
-        # register finalizer to free memory
+        # register finalizer to free memory on GC collection
         finalizer(finalizer, obj)
         obj
     end
 
-    SPSCStorage(ptr::Ptr{UInt8}, storage_size::Integer, owns_buffer::Bool) = begin
-        # write storage metadata to memory region
-        spsc_storage_set_metadata!(ptr, UInt64(storage_size), UInt64(0), UInt64(0))
+    """
+    Initializes new SPSC storage with the given memory region.
 
-        SPSCStorage(ptr, owns_buffer, ptr)
+    Note that `storage_size` is the total size of the memory region,
+    not just `buffer_size`. `storage_size = SPSC_STORAGE_BUFFER_OFFSET + buffer_size`.
+    """
+    SPSCStorage(ptr::Ptr{T}, storage_size::Integer; finalizer_fn::Function=s -> nothing) where T = begin
+        ptr8::Ptr{UInt8} = reinterpret(Ptr{UInt8}, ptr)
+
+        # write storage metadata to memory region
+        spsc_storage_set_metadata!(ptr8, UInt64(storage_size), UInt64(0), UInt64(0))
+
+        SPSCStorage(ptr8; finalizer_fn=finalizer_fn)
     end
 
-    SPSCStorage(buffer_size::Integer) = begin
-        buffer_offset::UInt64 = 320
-        storage_size::UInt64 = UInt64(buffer_size) + buffer_offset
+    """
+    Initializes new SPSC storage with given buffer size.
 
-        # allocate heap memory for storage
-        malloc_size = storage_size + 64
+    Note that `buffer_size` is the size of the memory region used by the SPSC queue.
+    The effective memory region size including metadata is `buffer_size + SPSC_STORAGE_BUFFER_OFFSET`.
+    """
+    SPSCStorage(storage_size::Integer) = begin
+        # allocate heap memory for storage (aligned to cache line size)
+        malloc_size::UInt64 = storage_size + SPSC_STORAGE_CACHE_LINE_SIZE
         malloc_ptr::Ptr{UInt8} = Base.Libc.malloc(malloc_size)
 
         # align ptr to 64 bytes
-        ptr = reinterpret(Ptr{UInt8}, (reinterpret(UInt64, malloc_ptr) + 63) & ~UInt64(63))
+        ptr = reinterpret(Ptr{UInt8}, (reinterpret(UInt64, malloc_ptr) + SPSC_STORAGE_CACHE_LINE_SIZE - 1) & ~UInt64(SPSC_STORAGE_CACHE_LINE_SIZE - 1))
 
         # write storage metadata to memory region
-        spsc_storage_set_metadata!(ptr, storage_size, UInt64(0), UInt64(0))
+        spsc_storage_set_metadata!(ptr, UInt64(storage_size), UInt64(0), UInt64(0))
 
-        SPSCStorage(ptr, true, malloc_ptr)
+        function finalizer(_::SPSCStorage)
+            println("freeing buffer")
+            # free buffer
+            Base.Libc.free(malloc_ptr)
+        end
+
+        SPSCStorage(ptr; finalizer_fn=finalizer)
     end
 end
 
 function spsc_storage_set_metadata!(storage_ptr::Ptr{UInt8}, storage_size::UInt64, read_ix::UInt64, write_ix::UInt64)::Nothing
     # write storage metadata to memory
-    buffer_offset::UInt64 = 320
-    buffer_size::UInt64 = storage_size - buffer_offset
     unsafe_store!(reinterpret(Ptr{UInt64}, storage_ptr), storage_size)
-    unsafe_store!(reinterpret(Ptr{UInt64}, storage_ptr + 64), buffer_size)
-    unsafe_store!(reinterpret(Ptr{UInt64}, storage_ptr + 64 * 2), buffer_offset) # buffer offset
-    unsafe_store!(reinterpret(Ptr{UInt64}, storage_ptr + 64 * 3), read_ix, :release) # read_ix (0-based)
-    unsafe_store!(reinterpret(Ptr{UInt64}, storage_ptr + 64 * 4), write_ix, :release) # write_ix (0-based)
+    unsafe_store!(reinterpret(Ptr{UInt64}, storage_ptr + SPSC_STORAGE_CACHE_LINE_SIZE), read_ix, :release) # read_ix (0-based)
+    unsafe_store!(reinterpret(Ptr{UInt64}, storage_ptr + SPSC_STORAGE_CACHE_LINE_SIZE * 2), write_ix, :release) # write_ix (0-based)
     nothing
 end
 
 function Base.finalizer(storage::SPSCStorage)
-    if storage.owns_buffer
-        Base.Libc.free(storage.malloc_ptr)
-    end
+    storage.finalizer_fn(storage)
 end
