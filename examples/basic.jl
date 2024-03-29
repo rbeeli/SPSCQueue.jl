@@ -32,7 +32,7 @@ function consumer(queue::SPSCQueueVar, iterations::Int64)
 
     counter = 0
     while counter < iterations
-        msg_view = dequeue(queue)
+        msg_view = dequeue!(queue)
         if !isempty(msg_view)
             # get counter value from message
             counter = unsafe_load(reinterpret(Ptr{Int64}, msg_view.data))

@@ -5,7 +5,7 @@ include("SPSCStorage.jl")
 include("SPSCQueueVar.jl")
 
 export SPSCStorage, SPSC_STORAGE_BUFFER_OFFSET
-export SPSCQueueVar, enqueue, dequeue, dequeue_commit!, buffer_size, max_message_size
+export SPSCQueueVar, enqueue!, dequeue!, dequeue_commit!, buffer_size, max_message_size, can_dequeue
 export SPSCMessage, SPSCMessageView, total_size, payload_size, isempty
 
 end # module

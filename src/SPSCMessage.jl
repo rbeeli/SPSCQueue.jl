@@ -10,7 +10,7 @@ end
 """
     SPSCMessageView
 
-A lightweight view into a message in the SPSC queue.
+A lightweight view (zero-copy) into a message in the SPSC queue.
 
 The underlying memory can be accessed and modified through the `data` field
 until `dequeue_commit!` is called.
@@ -26,4 +26,9 @@ struct SPSCMessageView
 end
 const MESSAGE_VIEW_EMPTY::SPSCMessageView = SPSCMessageView(0, C_NULL, 0);
 
+"""
+    isempty(view::SPSCMessageView) -> Bool
+
+Returns `true` if the message view is empty (size is 0), implying that the queue is empty.
+"""
 @inline Base.isempty(view::SPSCMessageView)::Bool = view.size == 0

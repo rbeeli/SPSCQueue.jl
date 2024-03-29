@@ -2,7 +2,7 @@ using Base.Filesystem
 using Base.Libc: strerror
 using Base: unsafe_convert
 
-const PROT_READ  = 0x01
+const PROT_READ = 0x01
 const PROT_WRITE = 0x02
 const MAP_SHARED = 0x01
 
@@ -29,7 +29,7 @@ function shm_open(
     shm_flags=Base.Filesystem.JL_O_RDWR,
     shm_mode=0o666,
     size=-1
-)::Tuple{File, Int, Ptr{UInt8}}
+)::Tuple{File,Int,Ptr{UInt8}}
     # file descriptor
     fd_handle = @ccall shm_open(shm_name::Cstring, shm_flags::Cint, shm_mode::__mode_t)::Cint
     if fd_handle == -1
@@ -60,7 +60,6 @@ function shm_open(
         end
     end
 
-
     # map shared memory region
     prot::Cint = PROT_READ | PROT_WRITE
     flags::Cint = MAP_SHARED
@@ -76,7 +75,7 @@ function shm_open(
 end
 
 function unlink_shm(shm_name)
-    res::Int = ccall(:shm_unlink, Int, (Ptr{UInt8}, ), shm_name)
+    res::Int = ccall(:shm_unlink, Int, (Ptr{UInt8},), shm_name)
     if res == -1
         error("shm_unlink() failed")
     end

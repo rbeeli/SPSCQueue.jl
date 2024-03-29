@@ -1,7 +1,7 @@
 using ThreadPinning
 using SPSCQueue
 
-include("../src/shm.jl"); # include POSIX shared memory code
+include("../test/shm.jl"); # include POSIX shared memory code
 
 function producer(queue::SPSCQueueVar, iterations::Int64)
     println("producer started")
@@ -16,7 +16,7 @@ function producer(queue::SPSCQueueVar, iterations::Int64)
         unsafe_store!(data_ptr, counter)
 
         # enqueue message
-        while !enqueue(queue, msg)
+        while !enqueue!(queue, msg)
             # queue full - busy wait
         end
 
@@ -34,7 +34,7 @@ function consumer(queue::SPSCQueueVar, iterations::Int64)
 
     counter = 0
     while counter < iterations
-        msg_view = dequeue(queue)
+        msg_view = dequeue!(queue)
         if !isempty(msg_view)
             # get counter value from message
             counter = unsafe_load(reinterpret(Ptr{Int64}, msg_view.data))
@@ -58,7 +58,8 @@ function run()
 
     # works only on Linux (see src/shm.jl for details)
     shm_fd, shm_size, shm_ptr = shm_open(
-        "my_shared_memory",
+        "my_shared_memory"
+        ;
         shm_flags=Base.Filesystem.JL_O_CREAT |
                   Base.Filesystem.JL_O_RDWR |
                   Base.Filesystem.JL_O_TRUNC,

@@ -30,20 +30,34 @@ SPSCStorage(ptr::Ptr{T}, storage_size::Integer; finalizer_fn::Function)
 # open existing storage for queue from an UInt8 pointer
 SPSCStorage(ptr::Ptr{T}; finalizer_fn::Function)
 
-# create a variable-element size SPSC queue
+# Create an instance of a Single-Producer Single-Consumer (SPSC) queue with a variable-sized message buffer.
 SPSCQueueVar(storage::SPSCStorage)
 
-# push a message onto the queue
-enqueue(queue::SPSCQueueVar, msg::SPSCMessage) 
+# Enqueues a message in the queue. Returns `true` if successful, `false` if the queue is full.
+enqueue!(queue::SPSCQueueVar, msg::SPSCMessage) 
 
-# pop a message from the queue
+# Reads the next message from the queue.
+# Returns a message view with `size = 0` if the queue is empty (`MESSAGE_VIEW_EMPTY`).
+# Call `isempty(msg)` to check if a message was dequeued successfully.
+# Note: You MUST call `dequeue_commit!` after processing the message to move the reader index.
 dequeue(queue::SPSCQueueVar)
 
-# commit the message after it has been processed by the consumer
+# Moves the reader index to the next message in the queue.
+# Call this after processing a message returned by `dequeue!`.
+# The message view is no longer valid after this call.
 dequeue_commit!(queue::SPSCQueueVar, msg_view::SPSCMessageView)
 
-# check if the popped message view is empty, i.e. if dequeue returned a message
+# Returns `true` if the message view is empty (size is 0), implying that the queue is empty.
 isempty(msg_view::SPSCMessageView)
+
+# Returns `true` if the SPSC queue is empty. Does not dequeue any messages (read-only operation).
+# There is no guarantee that the queue is still empty after this function returns,
+# as the writer might have enqueued a message immediately after the check.
+isempty(queue::SPSCQueueVar)
+
+# Returns `true` if the SPSC queue is empty. Does not dequeue any messages (read-only operation).
+# Same as `isempty`, but faster and only to be used by consumer thread due to memory order optimization.
+can_dequeue(queue::SPSCQueueVar)
 ```
 
 ## Example
@@ -70,7 +84,7 @@ function producer(queue::SPSCQueueVar, iterations::Int64)
         unsafe_store!(data_ptr, counter)
 
         # enqueue message
-        while !enqueue(queue, msg)
+        while !enqueue!(queue, msg)
             # queue full - busy wait
         end
 
@@ -88,7 +102,7 @@ function consumer(queue::SPSCQueueVar, iterations::Int64)
 
     counter = 0
     while counter < iterations
-        msg_view = dequeue(queue)
+        msg_view = dequeue!(queue)
         if !isempty(msg_view)
             # get counter value from message
             counter = unsafe_load(reinterpret(Ptr{Int64}, msg_view.data))
@@ -140,9 +154,10 @@ Example of creating a shared memory queue (Linux only in this example):
 buffer_size = 100_000 # bytes
 shm_size = buffer_size + SPSC_STORAGE_BUFFER_OFFSET
 
-# works only on Linux (see src/shm.jl for details)
+# works only on Linux (see test/shm.jl for details)
 shm_fd, shm_size, shm_ptr = shm_open(
-    "my_shared_memory",
+    "my_shared_memory"
+    ;
     shm_flags = Base.Filesystem.JL_O_CREAT |
         Base.Filesystem.JL_O_RDWR |
         Base.Filesystem.JL_O_TRUNC,

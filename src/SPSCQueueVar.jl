@@ -1,5 +1,5 @@
 """
-
+A Single-Producer Single-Consumer (SPSC) queue with a variable-sized message buffer.
 """
 mutable struct SPSCQueueVar
     cached_read_ix::UInt64
@@ -20,11 +20,9 @@ mutable struct SPSCQueueVar
 end
 
 """
-Enqueues a message in the queue.
-Returns `false` if the queue is full.
-If successfully enqueued, returns `true`.
+Enqueues a message in the queue. Returns `true` if successful, `false` if the queue is full.
 """
-@inline function enqueue(queue::SPSCQueueVar, val::SPSCMessage)::Bool
+@inline function enqueue!(queue::SPSCQueueVar, val::SPSCMessage)::Bool
     write_ix::UInt64 = unsafe_load(queue.storage.write_ix, :monotonic)
     msg_total_size::UInt64 = total_size(val)
     next_write_ix::UInt64 = next_index(write_ix, msg_total_size)
@@ -69,12 +67,12 @@ end
 
 """
 Reads the next message from the queue.
-Returns MESSAGE_VIEW_EMPTY if the queue is empty, which has `size` of 0.
-Call `isempty` to check if a message was dequeued successfully.
+Returns a message view with `size = 0` if the queue is empty (`MESSAGE_VIEW_EMPTY`).
+Call `isempty(msg)` to check if a message was dequeued successfully.
 
 Note: You MUST call `dequeue_commit!` after processing the message to move the reader index.
 """
-@inline function dequeue(queue::SPSCQueueVar)::SPSCMessageView
+@inline function dequeue!(queue::SPSCQueueVar)::SPSCMessageView
     @label recheck_read_index
     read_ix::UInt64 = unsafe_load(queue.storage.read_ix, :monotonic)
 
@@ -103,7 +101,9 @@ Note: You MUST call `dequeue_commit!` after processing the message to move the r
 end
 
 """
-Moves the reader index to the next message.
+Moves the reader index to the next message in the queue.
+Call this after processing a message returned by `dequeue!`.
+The message view is no longer valid after this call.
 """
 @inline function dequeue_commit!(queue::SPSCQueueVar, msg::SPSCMessageView)::Nothing
     next_read_ix = next_index(msg.index, msg.size + 8)
@@ -114,4 +114,23 @@ end
 @inline function next_index(current_index::UInt64, size::UInt64)::UInt64
     # ensure it's 8-byte aligned
     (current_index + size + 7) & ~UInt64(7)
+end
+
+"""
+Returns `true` if the SPSC queue is empty. Does not dequeue any messages (read-only operation).
+
+There is no guarantee that the queue is still empty after this function returns,
+as the writer might have enqueued a message immediately after the check.
+"""
+@inline function Base.isempty(queue::SPSCQueueVar)::Bool
+    unsafe_load(queue.storage.read_ix, :acquire) == unsafe_load(queue.storage.write_ix, :acquire)
+end
+
+"""
+Returns `true` if the SPSC queue is empty. Does not dequeue any messages (read-only operation).
+
+Same as `isempty`, but faster and only to be used by consumer thread due to memory order optimization.
+"""
+@inline function can_dequeue(queue::SPSCQueueVar)::Bool
+    unsafe_load(queue.storage.read_ix, :monotonic) ≠ unsafe_load(queue.storage.write_ix, :acquire)
 end

@@ -1,7 +1,7 @@
 using ThreadPinning
 using SPSCQueue
 
-include("../src/shm.jl");
+include("../test/shm.jl");
 include("../src/rdtsc.jl");
 
 function commas(num::Integer)
@@ -20,7 +20,7 @@ function producer(queue::SPSCQueueVar)
     while true
         unsafe_store!(data_ptr, rdtsc())
 
-        while !enqueue(queue, msg)
+        while !enqueue!(queue, msg)
         end
 
         i += 1
@@ -39,7 +39,7 @@ function consumer(queue::SPSCQueueVar)
     avg_latency::UInt64 = 0.0
     while true
     # while counter != 10^9
-        msg_view = dequeue(queue)
+        msg_view = dequeue!(queue)
         if !isempty(msg_view)
             clock::UInt64 = rdtsc()
             # clock = time_ns()
@@ -70,25 +70,25 @@ function run()
     # --------------------
     # in-memory
 
-    buffer_size = 100_000 # bytes
-    storage = SPSCStorage(buffer_size)
+    # buffer_size = 100_000 # bytes
+    # storage = SPSCStorage(buffer_size)
 
     # --------------------
     # shared memory buffer only
 
-    # shm_fd, shm_size, buffer_ptr = shm_open(
-    #     "pubsub_test_1"
-    #     # "bybit_orderbook_linear_julia_test"
-    #     # "bybit_trades_linear_julia_test"
-    #     ;
-    #     # shm_flags = Base.Filesystem.JL_O_CREAT |
-    #     #     Base.Filesystem.JL_O_RDWR |
-    #     #     Base.Filesystem.JL_O_TRUNC,
-    #     shm_flags=Base.Filesystem.JL_O_RDWR,
-    #     shm_mode=0o666
-    # )
-    # # storage = SPSCStorage(buffer_ptr, shm_size)
-    # storage = SPSCStorage(buffer_ptr)
+    shm_fd, shm_size, buffer_ptr = shm_open(
+        "pubsub_test_1"
+        # "bybit_orderbook_linear_julia_test"
+        # "bybit_trades_linear_julia_test"
+        ;
+        # shm_flags = Base.Filesystem.JL_O_CREAT |
+        #     Base.Filesystem.JL_O_RDWR |
+        #     Base.Filesystem.JL_O_TRUNC,
+        shm_flags=Base.Filesystem.JL_O_RDWR,
+        shm_mode=0o666
+    )
+    # storage = SPSCStorage(buffer_ptr, shm_size)
+    storage = SPSCStorage(buffer_ptr)
 
     println("storage_size:       $(storage.storage_size)")
     println("buffer_size:        $(storage.buffer_size)")
@@ -98,16 +98,16 @@ function run()
     # create variable-element size SPSC queue
     queue = SPSCQueueVar(storage)
 
-    p_thread = @tspawnat 3 producer(queue) # 1-based indexing
-    c_thread = @tspawnat 5 consumer(queue) # 1-based indexing
+    # p_thread = @tspawnat 3 producer(queue) # 1-based indexing
+    # c_thread = @tspawnat 5 consumer(queue) # 1-based indexing
 
-    # setaffinity([4]) # 0-based
-    # consumer(queue)
+    setaffinity([4]) # 0-based
+    consumer(queue)
     # setaffinity([2]) # 0-based
     # producer(queue)
 
-    wait(p_thread)
-    wait(c_thread)
+    # wait(p_thread)
+    # wait(c_thread)
 end
 
 GC.enable(false)
