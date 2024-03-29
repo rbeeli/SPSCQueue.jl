@@ -67,7 +67,7 @@ end
 
 """
 Reads the next message from the queue.
-Returns a message view with `size = 0` if the queue is empty (`MESSAGE_VIEW_EMPTY`).
+Returns a message view with `size = 0` if the queue is empty (`SPSC_MESSAGE_VIEW_EMPTY`).
 Call `isempty(msg)` to check if a message was dequeued successfully.
 
 Note: You MUST call `dequeue_commit!` after processing the message to move the reader index.
@@ -80,7 +80,7 @@ Note: You MUST call `dequeue_commit!` after processing the message to move the r
     if read_ix == queue.cached_write_ix
         queue.cached_write_ix = unsafe_load(queue.storage.write_ix, :acquire)
         if read_ix == queue.cached_write_ix
-            return MESSAGE_VIEW_EMPTY  # queue is empty
+            return SPSC_MESSAGE_VIEW_EMPTY  # queue is empty
         end
     end
 

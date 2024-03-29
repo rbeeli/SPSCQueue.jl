@@ -37,7 +37,7 @@ SPSCQueueVar(storage::SPSCStorage)
 enqueue!(queue::SPSCQueueVar, msg::SPSCMessage) 
 
 # Reads the next message from the queue.
-# Returns a message view with `size = 0` if the queue is empty (`MESSAGE_VIEW_EMPTY`).
+# Returns a message view with `size = 0` if the queue is empty (`SPSC_MESSAGE_VIEW_EMPTY`).
 # Call `isempty(msg)` to check if a message was dequeued successfully.
 # Note: You MUST call `dequeue_commit!` after processing the message to move the reader index.
 dequeue(queue::SPSCQueueVar)

@@ -24,7 +24,7 @@ struct SPSCMessageView
     data::Ptr{UInt8}
     index::UInt64
 end
-const MESSAGE_VIEW_EMPTY::SPSCMessageView = SPSCMessageView(0, C_NULL, 0);
+const SPSC_MESSAGE_VIEW_EMPTY::SPSCMessageView = SPSCMessageView(0, C_NULL, 0);
 
 """
     isempty(view::SPSCMessageView) -> Bool
