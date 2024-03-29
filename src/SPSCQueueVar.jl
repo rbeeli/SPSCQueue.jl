@@ -1,5 +1,5 @@
 """
-A Single-Producer Single-Consumer (SPSC) queue with a variable-sized message buffer.
+A Single-Producer Single-Consumer (SPSC) queue with variable-sized message buffer.
 """
 mutable struct SPSCQueueVar
     cached_read_ix::UInt64
@@ -70,9 +70,12 @@ Reads the next message from the queue.
 Returns a message view with `size = 0` if the queue is empty (`SPSC_MESSAGE_VIEW_EMPTY`).
 Call `isempty(msg)` to check if a message was dequeued successfully.
 
-Note: You MUST call `dequeue_commit!` after processing the message to move the reader index.
+The reader only advances after calling `dequeue_commit!`, this allows to use the
+message view without copying the data to another buffer between `dequeue_begin!` and `dequeue_commit!`.
+
+Failing to call `dequeue_commit!` is allowed, but means the reader will not advance.
 """
-@inline function dequeue!(queue::SPSCQueueVar)::SPSCMessageView
+@inline function dequeue_begin!(queue::SPSCQueueVar)::SPSCMessageView
     @label recheck_read_index
     read_ix::UInt64 = unsafe_load(queue.storage.read_ix, :monotonic)
 
@@ -102,7 +105,7 @@ end
 
 """
 Moves the reader index to the next message in the queue.
-Call this after processing a message returned by `dequeue!`.
+Call this after processing a message returned by `dequeue_begin!`.
 The message view is no longer valid after this call.
 """
 @inline function dequeue_commit!(queue::SPSCQueueVar, msg::SPSCMessageView)::Nothing

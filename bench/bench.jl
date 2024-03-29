@@ -39,7 +39,7 @@ function consumer(queue::SPSCQueueVar)
     avg_latency::UInt64 = 0.0
     while true
     # while counter != 10^9
-        msg_view = dequeue!(queue)
+        msg_view = dequeue_begin!(queue)
         if !isempty(msg_view)
             clock::UInt64 = rdtsc()
             # clock = time_ns()

@@ -7,20 +7,22 @@ function producer(queue::SPSCQueueVar, iterations::Int64)
     # 8 bytes message
     size = 8
     data = Int64[0]
-    data_ptr = pointer(data)
-    msg = SPSCMessage(data_ptr, size)
-    for counter in 1:iterations
-        # store counter value in message
-        unsafe_store!(data_ptr, counter)
+    GC.@preserve data begin
+        data_ptr = pointer(data)
+        msg = SPSCMessage(data_ptr, size)
+        for counter in 1:iterations
+            # store counter value in message
+            unsafe_store!(data_ptr, counter)
 
-        # enqueue message
-        while !enqueue(queue, msg)
-            # queue full - busy wait
-        end
+            # enqueue message
+            while !enqueue!(queue, msg)
+                # queue full - busy wait
+            end
 
-        # print status
-        if counter % 10_000 == 0
-            println("> sent $counter")
+            # print status
+            if counter % 10_000 == 0
+                println("> sent $counter")
+            end
         end
     end
 
@@ -32,7 +34,7 @@ function consumer(queue::SPSCQueueVar, iterations::Int64)
 
     counter = 0
     while counter < iterations
-        msg_view = dequeue!(queue)
+        msg_view = dequeue_begin!(queue)
         if !isempty(msg_view)
             # get counter value from message
             counter = unsafe_load(reinterpret(Ptr{Int64}, msg_view.data))

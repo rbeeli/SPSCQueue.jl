@@ -1,6 +1,8 @@
 # SPSCQueue.jl
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+![](https://img.shields.io/badge/Version-beta-blue)
+
 
 A fast single-producer, single-consumer queue implementation in pure Julia.
 
@@ -21,43 +23,47 @@ The queue storage can be allocated on the heap, or in shared memory.
 The queue is implemented in the `SPSCQueue` module, and provides the following functions:
 
 ```julia
-# create storage memory for queue on heap
+using SPSCQueue
+
+# constructor: Create storage memory on heap
 SPSCStorage(storage_size::Integer)
 
-# create new storage for queue from an UInt8 pointer
+# constructor: Create new storage from `Ptr{UInt8}` pointer
 SPSCStorage(ptr::Ptr{T}, storage_size::Integer; finalizer_fn::Function)
 
-# open existing storage for queue from an UInt8 pointer
+# constructor: Opens existing storage buffer from an `UInt8` pointer
 SPSCStorage(ptr::Ptr{T}; finalizer_fn::Function)
 
-# Create an instance of a Single-Producer Single-Consumer (SPSC) queue with a variable-sized message buffer.
+# constructor: Create an instance of a Single-Producer Single-Consumer (SPSC) queue with variable-sized message buffer.
 SPSCQueueVar(storage::SPSCStorage)
 
 # Enqueues a message in the queue. Returns `true` if successful, `false` if the queue is full.
-enqueue!(queue::SPSCQueueVar, msg::SPSCMessage) 
+enqueue!(queue::SPSCQueueVar, msg::SPSCMessage)::Bool
 
 # Reads the next message from the queue.
 # Returns a message view with `size = 0` if the queue is empty (`SPSC_MESSAGE_VIEW_EMPTY`).
 # Call `isempty(msg)` to check if a message was dequeued successfully.
-# Note: You MUST call `dequeue_commit!` after processing the message to move the reader index.
-dequeue(queue::SPSCQueueVar)
+# The reader only advances after calling `dequeue_commit!`, this allows to use the
+# message view without copying the data to another buffer between `dequeue_begin!` and `dequeue_commit!`.
+# Failing to call `dequeue_commit!` is allowed, but means the reader will not advance.
+dequeue_begin!(queue::SPSCQueueVar)::SPSCMessageView
 
 # Moves the reader index to the next message in the queue.
-# Call this after processing a message returned by `dequeue!`.
+# Call this after processing a message returned by `dequeue_begin!`.
 # The message view is no longer valid after this call.
-dequeue_commit!(queue::SPSCQueueVar, msg_view::SPSCMessageView)
+dequeue_commit!(queue::SPSCQueueVar, msg_view::SPSCMessageView)::Nothing
 
 # Returns `true` if the message view is empty (size is 0), implying that the queue is empty.
-isempty(msg_view::SPSCMessageView)
+isempty(msg_view::SPSCMessageView)::Bool
 
 # Returns `true` if the SPSC queue is empty. Does not dequeue any messages (read-only operation).
 # There is no guarantee that the queue is still empty after this function returns,
 # as the writer might have enqueued a message immediately after the check.
-isempty(queue::SPSCQueueVar)
+isempty(queue::SPSCQueueVar)::Bool
 
 # Returns `true` if the SPSC queue is empty. Does not dequeue any messages (read-only operation).
 # Same as `isempty`, but faster and only to be used by consumer thread due to memory order optimization.
-can_dequeue(queue::SPSCQueueVar)
+can_dequeue(queue::SPSCQueueVar)::Bool
 ```
 
 ## Example
@@ -77,20 +83,22 @@ function producer(queue::SPSCQueueVar, iterations::Int64)
     # 8 bytes message
     size = 8
     data = Int64[0]
-    data_ptr = pointer(data)
-    msg = SPSCMessage(data_ptr, size)
-    for counter in 1:iterations
-        # store counter value in message
-        unsafe_store!(data_ptr, counter)
+    GC.@preserve data begin
+        data_ptr = pointer(data)
+        msg = SPSCMessage(data_ptr, size)
+        for counter in 1:iterations
+            # store counter value in message
+            unsafe_store!(data_ptr, counter)
 
-        # enqueue message
-        while !enqueue!(queue, msg)
-            # queue full - busy wait
-        end
+            # enqueue message
+            while !enqueue!(queue, msg)
+                # queue full - busy wait
+            end
 
-        # print status
-        if counter % 10_000 == 0
-            println("> sent $counter")
+            # print status
+            if counter % 10_000 == 0
+                println("> sent $counter")
+            end
         end
     end
 
@@ -102,7 +110,7 @@ function consumer(queue::SPSCQueueVar, iterations::Int64)
 
     counter = 0
     while counter < iterations
-        msg_view = dequeue!(queue)
+        msg_view = dequeue_begin!(queue)
         if !isempty(msg_view)
             # get counter value from message
             counter = unsafe_load(reinterpret(Ptr{Int64}, msg_view.data))
@@ -156,9 +164,9 @@ shm_size = buffer_size + SPSC_STORAGE_BUFFER_OFFSET
 
 # works only on Linux (see test/shm.jl for details)
 shm_fd, shm_size, shm_ptr = shm_open(
-    "my_shared_memory"
+    "spscqueue_jl_shared_memory"
     ;
-    shm_flags = Base.Filesystem.JL_O_CREAT |
+    shm_flags=Base.Filesystem.JL_O_CREAT |
         Base.Filesystem.JL_O_RDWR |
         Base.Filesystem.JL_O_TRUNC,
     shm_mode=0o666,

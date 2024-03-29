@@ -29,7 +29,7 @@ end
         @test can_dequeue(queue)
 
         # dequeue
-        msg_view = dequeue!(queue)
+        msg_view = dequeue_begin!(queue)
         @test msg_view.size == size_bytes
         for i in 1:msg_view.size
             @test unsafe_load(msg_view.data, i) == unsafe_load(ptr, i)

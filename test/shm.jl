@@ -11,14 +11,39 @@ const __mode_t = UInt32
 
 
 """
-Opens or creates a shared memory object. Calls `ftruncate` to set the size
-of the shared memory region. Furthermore, calls `mmap` to map the shared
-memory region into the address space of the calling process.
+Opens or creates a POSIX shared memory object.
 
 # Returns
 - `fd::File` - file descriptor
 - `size` - size of shared memory region
 - `ptr::Ptr{UInt8}` - pointer to shared memory region
+
+# Examples
+
+## Creating new shared memory region
+
+```julia
+shm_fd, shm_size, shm_ptr = shm_open(
+    "spscqueue_jl_shared_memory"
+    ;
+    shm_flags=Base.Filesystem.JL_O_CREAT |
+        Base.Filesystem.JL_O_RDWR |
+        Base.Filesystem.JL_O_TRUNC,
+    shm_mode=0o666,
+    size=shm_size
+)
+```
+
+## Opening existing shared memory region
+
+```julia
+shm_fd, shm_size, shm_ptr = shm_open(
+    "spscqueue_jl_shared_memory",
+    shm_flags=Base.Filesystem.JL_O_RDWR,
+    shm_mode=0o666,
+    size=-1
+)
+```
 
 # References
 https://pubs.opengroup.org/onlinepubs/007904875/functions/shm_open.html
