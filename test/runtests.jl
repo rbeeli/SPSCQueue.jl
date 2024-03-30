@@ -118,7 +118,7 @@ end
 
     # close shared memory, but keep the queue alive
     # unlink_shm("SPSCQueue_jl_shm_unit_test")
-    # close(shm_fd)
+    close(shm_fd)
 
     # reopen shared memory
     # works only on Linux (see src/shm.jl for details)
