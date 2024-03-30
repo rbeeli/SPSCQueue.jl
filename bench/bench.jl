@@ -1,6 +1,7 @@
 using ThreadPinning
 using SPSCQueue
 
+cd("bench");
 include("../test/shm.jl");
 include("../src/rdtsc.jl");
 
@@ -98,16 +99,16 @@ function run()
     # create variable-element size SPSC queue
     queue = SPSCQueueVar(storage)
 
-    # p_thread = @tspawnat 3 producer(queue) # 1-based indexing
-    # c_thread = @tspawnat 5 consumer(queue) # 1-based indexing
+    p_thread = @tspawnat 3 producer(queue) # 1-based indexing
+    c_thread = @tspawnat 5 consumer(queue) # 1-based indexing
 
-    setaffinity([4]) # 0-based
-    consumer(queue)
+    # setaffinity([4]) # 0-based
+    # consumer(queue)
     # setaffinity([2]) # 0-based
     # producer(queue)
 
-    # wait(p_thread)
-    # wait(c_thread)
+    wait(p_thread)
+    wait(c_thread)
 end
 
 GC.enable(false)
