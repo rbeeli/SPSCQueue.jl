@@ -85,19 +85,13 @@ mutable struct SPSCStorage
     """
     SPSCStorage(storage_size::Integer) = begin
         # allocate heap memory for storage (aligned to cache line size)
-        malloc_size::UInt64 = storage_size + SPSC_STORAGE_CACHE_LINE_SIZE
-        malloc_ptr::Ptr{UInt8} = Base.Libc.malloc(malloc_size)
-
-        # align ptr to 64 bytes
-        ptr = reinterpret(Ptr{UInt8}, (reinterpret(UInt64, malloc_ptr) + SPSC_STORAGE_CACHE_LINE_SIZE - 1) & ~UInt64(SPSC_STORAGE_CACHE_LINE_SIZE - 1))
+        ptr::Ptr{UInt8} = SPSCMemory.aligned_alloc(storage_size, SPSC_STORAGE_CACHE_LINE_SIZE)
 
         # write storage metadata to memory region
         spsc_storage_set_metadata!(ptr, UInt64(storage_size), UInt64(0), UInt64(0))
 
-        function finalizer(_::SPSCStorage)
-            println("freeing buffer")
-            # free buffer
-            Base.Libc.free(malloc_ptr)
+        function finalizer(storage::SPSCStorage)
+            SPSCMemory.aligned_free(storage.storage_ptr)
         end
 
         SPSCStorage(ptr; finalizer_fn=finalizer)

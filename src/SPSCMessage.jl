@@ -1,7 +1,10 @@
 struct SPSCMessage
     size::UInt64
     data::Ptr{UInt8}
-    SPSCMessage(data::Ptr{T}, size::TSize) where {T, TSize <: Integer} = new(UInt64(size), reinterpret(Ptr{UInt8}, data))
+
+    function SPSCMessage(data::Ptr{T}, size::TSize) where {T,TSize<:Integer}
+        new(UInt64(size), reinterpret(Ptr{UInt8}, data))
+    end
 end
 @inline total_size(msg::SPSCMessage)::UInt64 = sizeof(UInt64) + msg.size
 @inline payload_size(msg::SPSCMessage)::UInt64 = msg.size
