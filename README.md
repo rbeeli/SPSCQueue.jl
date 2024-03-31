@@ -4,19 +4,19 @@
 ![](https://img.shields.io/badge/Version-beta-blue)
 
 
-A fast lock-free single-producer, single-consumer queue implementation in pure Julia.
+A fast, lock-free, single-producer, single-consumer queue implementation in pure Julia.
 
 The SPSC queue allows to push variable-sized binary messages into a queue from one thread, and pop them from another thread.
 The queue is lock-free and uses a circular buffer to store the messages.
 
-The queue memory can be used directly by the consumer as long as the dequeue-operation hasn't been performed (`dequeue_commit!`), which allows for zero-copy message passing.
+The queue memory can be used directly by the consumer as long as the dequeue-operation hasn't been committed (see `dequeue_commit!`), which allows for zero-copy message passing.
 
 On a 12th Gen Intel(R) Core(TM) i9-12900K running Ubuntu 22.04 x64, the queue can:
 
-* push and pop over 180 million 8-byte messages per second
-* achieve latencies of < 100 nanoseconds in the non-contended case
+* push and pop way above 100 million 8-byte messages per second
+* achieve latencies of < 100 nanoseconds in the non-contended case (producer slower than consumer, consumer busy spinning)
 
-The queue storage can be allocated on the heap, or in shared memory.
+The queue buffer memory can be allocated on the heap, or in shared memory (see `SPSCStorage`).
 
 ## API
 

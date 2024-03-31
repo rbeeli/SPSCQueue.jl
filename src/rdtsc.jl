@@ -1,5 +1,3 @@
-using ThreadPinning
-
 @inline function rdtsc()::UInt64
     # https://github.com/m-j-w/CpuId.jl/blob/fd39b7b89755b9d7e69354f22fb81559f93d2e3a/src/CpuInstructions.jl#L80
     Base.llvmcall(
@@ -16,10 +14,12 @@ using ThreadPinning
 end
 
 """
-Measures the number of cycles per nanosecond using the rdtsc instruction.
+Measures the number of RDTSC cycles per nanosecond.
 This measure is highly CPU/core specific and depends on power settings of
-the machine. Use with caution. Usually only neede for very low-latency /
-high throughput applications measuring with nanosecond precision.
+the machine. Use with caution.
+
+Usually only neede for very low-latency / high throughput applications
+measuring with nanosecond precision and low overhead.
 
 Otherwise, consider using `get_clock_monotonic_ns` which is more portable
 and reliable, or Julia's `time_ns`.
@@ -27,27 +27,44 @@ and reliable, or Julia's `time_ns`.
 Example
 -------
 
-    t = @tspawnat 1 rdtsc_cycles_per_ns()
+    t = @tspawnat 1 measure_rdtsc_cycles_per_ns()
     cycles_per_ns = fetch(t)
     println("cycles per ns: \$cycles_per_ns")
 """
-function rdtsc_cycles_per_ns(; wait_s=0.05, trials=5, cpu_affinity::Int=1)::Float64
-    setaffinity([cpu_affinity])
+function measure_rdtsc_cycles_per_ns()::Float64
+    # measure overhead of clock_gettime
+    start_t = time_ns()
+    for _ in 1:10_000
+        time_ns()
+    end
+    end_t = time_ns()
+    overhead_per_call = (end_t - start_t) / 10_000
 
-    best_cycles_per_ns = 0.0
-    for _ in 1:trials
-        c0 = rdtsc()
-        t = time_ns()
-        while true
-            # busy wait
-            time_ns() - t > 1e9 * wait_s && break
-        end
-        c1 = rdtsc()
-        cycles_per_ns = (c1 - c0) / 1e9 / wait_s
-        if cycles_per_ns > best_cycles_per_ns
-            best_cycles_per_ns = cycles_per_ns
-        end
+    # warm-up phase
+    for _ in 1:100
+        rdtsc()
+        time_ns()
     end
 
-    best_cycles_per_ns
+    # measure
+    loops = 1001
+    wait_time_ns = 10_000
+    measurements = zeros(Float64, loops)
+    for i in 1:loops
+        start_cycles = rdtsc()
+        start = time_ns()
+        end_time = start + wait_time_ns
+        while time_ns() < end_time
+            # busy wait
+        end
+        end_cycles = rdtsc()
+        measurements[i] = (end_cycles - start_cycles) /
+                          (wait_time_ns - overhead_per_call)
+    end
+
+    # get median value
+    sort!(measurements)
+    median_value = measurements[Int(ceil(loops / 2))]
+
+    median_value
 end
