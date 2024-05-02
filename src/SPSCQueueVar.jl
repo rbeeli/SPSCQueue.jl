@@ -120,7 +120,8 @@ end
 end
 
 """
-Returns `true` if the SPSC queue is empty. Does not dequeue any messages (read-only operation).
+Returns `true` if the SPSC queue is empty.
+Does not dequeue any messages (read-only operation).
 
 There is no guarantee that the queue is still empty after this function returns,
 as the writer might have enqueued a message immediately after the check.
@@ -130,9 +131,10 @@ as the writer might have enqueued a message immediately after the check.
 end
 
 """
-Returns `true` if the SPSC queue is empty. Does not dequeue any messages (read-only operation).
+Returns `false` if the SPSC queue is empty.
+Does not dequeue any messages (read-only operation).
 
-Same as `isempty`, but faster and only to be used by consumer thread due to memory order optimization.
+To be used by consumer thread only due to memory order optimization.
 """
 @inline function can_dequeue(queue::SPSCQueueVar)::Bool
     unsafe_load(queue.storage.read_ix, :monotonic) ≠ unsafe_load(queue.storage.write_ix, :acquire)

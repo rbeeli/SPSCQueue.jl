@@ -56,13 +56,15 @@ dequeue_commit!(queue::SPSCQueueVar, msg_view::SPSCMessageView)::Nothing
 # Returns `true` if the message view is empty (size is 0), implying that the queue is empty.
 isempty(msg_view::SPSCMessageView)::Bool
 
-# Returns `true` if the SPSC queue is empty. Does not dequeue any messages (read-only operation).
+# Returns `true` if the SPSC queue is empty.
+# Does not dequeue any messages (read-only operation).
 # There is no guarantee that the queue is still empty after this function returns,
 # as the writer might have enqueued a message immediately after the check.
 isempty(queue::SPSCQueueVar)::Bool
 
-# Returns `true` if the SPSC queue is empty. Does not dequeue any messages (read-only operation).
-# Same as `isempty`, but faster and only to be used by consumer thread due to memory order optimization.
+# Returns `false` if the SPSC queue is empty.
+# Does not dequeue any messages (read-only operation).
+# To be used by consumer thread only due to memory order optimization.
 can_dequeue(queue::SPSCQueueVar)::Bool
 ```
 
