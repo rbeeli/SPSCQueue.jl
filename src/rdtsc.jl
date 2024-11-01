@@ -18,7 +18,7 @@ Measures the number of RDTSC cycles per nanosecond.
 This measure is highly CPU/core specific and depends on power settings of
 the machine. Use with caution.
 
-Usually only neede for very low-latency / high throughput applications
+Usually only needed for very low-latency / high throughput applications
 measuring with nanosecond precision and low overhead.
 
 Otherwise, consider using `get_clock_monotonic_ns` which is more portable

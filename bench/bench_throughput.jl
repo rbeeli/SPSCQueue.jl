@@ -2,8 +2,7 @@ occursin("bench", pwd()) || cd("bench");
 
 using ThreadPinning
 using SPSCQueue
-
-include("../test/shm.jl");
+using SPSCQueue.SharedMemory
 
 commas(num::Integer) = replace(string(num), r"(?<=[0-9])(?=(?:[0-9]{3})+(?![0-9]))" => "'")
 

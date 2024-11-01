@@ -1,4 +1,4 @@
-module SPSCMemory
+module Memory
 
 mutable struct AlignedAllocStats
     count::Int64

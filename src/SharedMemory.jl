@@ -1,3 +1,5 @@
+module SharedMemory
+
 using Base.Filesystem
 using Base.Libc: strerror
 using Base: unsafe_convert
@@ -8,7 +10,6 @@ const MAP_SHARED = 0x01
 
 const __off64_t = Clong
 const __mode_t = UInt32
-
 
 """
 Opens or creates a POSIX shared memory object.
@@ -111,3 +112,7 @@ function unlink_shm(shm_name)
         error("shm_unlink failed: " * Libc.strerror(Libc.errno()))
     end
 end
+
+export PROT_READ, PROT_WRITE, MAP_SHARED, shm_open, unlink_shm
+
+end # module

@@ -1,3 +1,5 @@
+using SPSCQueue.Memory
+
 const SPSC_STORAGE_CACHE_LINE_SIZE::UInt64 = 64
 const SPSC_STORAGE_BUFFER_OFFSET::UInt64 = 3 * 64
 
@@ -85,13 +87,13 @@ mutable struct SPSCStorage
     """
     SPSCStorage(storage_size::Integer) = begin
         # allocate heap memory for storage (aligned to cache line size)
-        ptr::Ptr{UInt8} = SPSCMemory.aligned_alloc(storage_size, SPSC_STORAGE_CACHE_LINE_SIZE)
+        ptr::Ptr{UInt8} = aligned_alloc(storage_size, SPSC_STORAGE_CACHE_LINE_SIZE)
 
         # write storage metadata to memory region
         spsc_storage_set_metadata!(ptr, UInt64(storage_size), UInt64(0), UInt64(0))
 
         function finalizer(storage::SPSCStorage)
-            SPSCMemory.aligned_free(storage.storage_ptr)
+            aligned_free(storage.storage_ptr)
         end
 
         SPSCStorage(ptr; finalizer_fn=finalizer)

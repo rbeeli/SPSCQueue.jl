@@ -1,7 +1,6 @@
 using ThreadPinning
 using SPSCQueue
-
-include("../test/shm.jl"); # include POSIX shared memory code
+using SPSCQueue.SharedMemory
 
 function producer(queue::SPSCQueueVar, iterations::Int64)
     println("producer started")
@@ -58,7 +57,7 @@ function run()
     buffer_size = 100_000 # bytes
     shm_size = buffer_size + SPSC_STORAGE_BUFFER_OFFSET
 
-    # works only on Linux (see src/shm.jl for details)
+    # works only on Linux (POSIX, see src/shm.jl for details)
     shm_fd, shm_size, shm_ptr = shm_open(
         "spscqueue_jl_shared_memory"
         ;
