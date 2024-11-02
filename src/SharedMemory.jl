@@ -183,6 +183,6 @@ function shm_close(shm::PosixSharedMemory)::Nothing
     close(shm.fd)
 end
 
-export shm_open, shm_exists, shm_unlink, shm_close
+export PosixSharedMemory, shm_open, shm_exists, shm_unlink, shm_close
 
 end # module

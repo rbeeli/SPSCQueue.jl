@@ -7,7 +7,7 @@ using PosixIPC.SharedMemory
 
 commas(num::Integer) = replace(string(num), r"(?<=[0-9])(?=(?:[0-9]{3})+(?![0-9]))" => "'")
 
-function producer(queue::SPSCQueueVar)
+function producer(queue::SPSCQueueVar, iterations)
     println("producer started")
 
     # 8 bytes message (counter
@@ -15,10 +15,7 @@ function producer(queue::SPSCQueueVar)
     data = UInt64[0]
     data_ptr = pointer(data)
     msg = Message(data_ptr, size)
-    i = 0
-    while true
-        i += 1
-
+    for i in 1:iterations
         unsafe_store!(data_ptr, i)
 
         while !enqueue!(queue, msg)
@@ -28,7 +25,7 @@ function producer(queue::SPSCQueueVar)
     println("producer done")
 end
 
-function consumer(queue::SPSCQueueVar)
+function consumer(queue::SPSCQueueVar, iterations)
     println("consumer started")
 
     log_interval = 10_000_000
@@ -48,6 +45,10 @@ function consumer(queue::SPSCQueueVar)
 
                 last_clock = clock
                 next_log += log_interval
+            end
+
+            if counter == iterations
+                break
             end
         end
     end
@@ -87,14 +88,18 @@ function run()
     # create variable-element size SPSC queue
     queue = SPSCQueueVar(storage)
 
+    iterations = 1_000_000_000
+
     # spawn producer thread on core 3
-    p_thread = ThreadPinning.@spawnat 3 producer(queue) # 1-based indexing
+    p_thread = ThreadPinning.@spawnat 3 producer(queue, iterations) # 1-based indexing
 
     # run consumer on main thread (core 5)
     pinthread(4) # 0-based indexing
-    consumer(queue)
+    consumer(queue, iterations)
 
     wait(p_thread)
+
+    shm_unlink(shm)
 end
 
 GC.enable(false)
