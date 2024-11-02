@@ -1,3 +1,7 @@
+using ..Queues: Message, MessageView, total_size, payload_size, SPSC_MESSAGE_VIEW_EMPTY
+import ..Queues
+using ...Queues: can_dequeue, dequeue_begin!, dequeue_commit!, isempty
+
 """
 A Single-Producer Single-Consumer (SPSC) queue with variable-sized message buffer.
 """
@@ -15,6 +19,11 @@ mutable struct SPSCQueueVar
         unsafe_load(storage.write_ix, :acquire),
         ntuple(identity, 7), # padding
         storage,
+        # at least two messages must fit in buffer, otherwise we can't
+        # distinguish between empty and full, because the updated write index
+        # will be equal to the read index (0) after the first message
+        # has been written due to wrapping around, falsely indicating that
+        # the queue is empty.
         storage.buffer_size / 2,
     )
 end
@@ -22,7 +31,7 @@ end
 """
 Enqueues a message in the queue. Returns `true` if successful, `false` if the queue is full.
 """
-@inline function enqueue!(queue::SPSCQueueVar, val::SPSCMessage)::Bool
+@inline function Queues.enqueue!(queue::SPSCQueueVar, val::Message)::Bool
     write_ix::UInt64 = unsafe_load(queue.storage.write_ix, :monotonic)
     msg_total_size::UInt64 = total_size(val)
     next_write_ix::UInt64 = next_index(write_ix, msg_total_size)
@@ -75,7 +84,7 @@ message view without copying the data to another buffer between `dequeue_begin!`
 
 Failing to call `dequeue_commit!` is allowed, but means the reader will not advance.
 """
-@inline function dequeue_begin!(queue::SPSCQueueVar)::SPSCMessageView
+@inline function Queues.dequeue_begin!(queue::SPSCQueueVar)::MessageView
     @label recheck_read_index
     read_ix::UInt64 = unsafe_load(queue.storage.read_ix, :monotonic)
 
@@ -98,7 +107,7 @@ Failing to call `dequeue_commit!` is allowed, but means the reader will not adva
 
     # read message
     data::Ptr{UInt8} = reinterpret(Ptr{UInt8}, queue.storage.buffer_ptr + read_ix + 8)
-    msg = SPSCMessageView(message_size, data, read_ix)
+    msg = MessageView(message_size, data, read_ix)
 
     msg
 end
@@ -108,7 +117,7 @@ Moves the reader index to the next message in the queue.
 Call this after processing a message returned by `dequeue_begin!`.
 The message view is no longer valid after this call.
 """
-@inline function dequeue_commit!(queue::SPSCQueueVar, msg::SPSCMessageView)::Nothing
+@inline function Queues.dequeue_commit!(queue::SPSCQueueVar, msg::MessageView)::Nothing
     next_read_ix = next_index(msg.index, msg.size + 8)
     unsafe_store!(queue.storage.read_ix, next_read_ix, :release)
     nothing
@@ -136,6 +145,6 @@ Does not dequeue any messages (read-only operation).
 
 To be used by consumer thread only due to memory order optimization.
 """
-@inline function can_dequeue(queue::SPSCQueueVar)::Bool
+@inline function Queues.can_dequeue(queue::SPSCQueueVar)::Bool
     unsafe_load(queue.storage.read_ix, :monotonic) ≠ unsafe_load(queue.storage.write_ix, :acquire)
 end

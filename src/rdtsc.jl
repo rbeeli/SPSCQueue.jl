@@ -27,7 +27,7 @@ and reliable, or Julia's `time_ns`.
 Example
 -------
 
-    t = @tspawnat 1 measure_rdtsc_cycles_per_ns()
+    t = ThreadPinning.@spawnat 1 measure_rdtsc_cycles_per_ns()
     cycles_per_ns = fetch(t)
     println("cycles per ns: \$cycles_per_ns")
 """

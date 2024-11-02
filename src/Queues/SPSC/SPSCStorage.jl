@@ -1,7 +1,11 @@
-using SPSCQueue.Memory
+using PosixIPC.Memory
 
-const SPSC_STORAGE_CACHE_LINE_SIZE::UInt64 = 64
-const SPSC_STORAGE_BUFFER_OFFSET::UInt64 = 3 * 64
+# Define the constant (you can look up this value in your system's unistd.h)
+const _SC_LEVEL1_DCACHE_LINESIZE = 190
+get_cache_line_size() = ccall((:sysconf,), Clong, (Cint,), _SC_LEVEL1_DCACHE_LINESIZE)
+
+const SPSC_STORAGE_CACHE_LINE_SIZE::UInt64 = get_cache_line_size()
+const SPSC_STORAGE_BUFFER_OFFSET::UInt64 = 3 * SPSC_STORAGE_CACHE_LINE_SIZE
 
 """
     SPSCStorage(storage_size::Integer)
@@ -38,14 +42,17 @@ mutable struct SPSCStorage
     const buffer_size::UInt64
     const storage_ptr::Ptr{UInt8}
     const buffer_ptr::Ptr{UInt8}
-    const finalizer_fn::Function
     read_ix::Ptr{UInt64}
     write_ix::Ptr{UInt64}
 
     """
     Reads the SPSC storage data from an existing initialized memory region.
     """
-    SPSCStorage(ptr::Ptr{T}; finalizer_fn::Function=s -> nothing) where T = begin
+    function SPSCStorage(
+        ptr::Ptr{T}
+        ;
+        finalizer_fn::FFn=s -> nothing
+    ) where {T,FFn<:Function}
         ptr8::Ptr{UInt8} = reinterpret(Ptr{UInt8}, ptr)
         storage_size::UInt64 = unsafe_load(reinterpret(Ptr{UInt64}, ptr8))
         buffer_size::UInt64 = storage_size - SPSC_STORAGE_BUFFER_OFFSET
@@ -55,28 +62,34 @@ mutable struct SPSCStorage
             buffer_size, # buffer size
             ptr8, # storage_ptr
             ptr8 + SPSC_STORAGE_BUFFER_OFFSET, # buffer_ptr
-            finalizer_fn,
             reinterpret(Ptr{UInt64}, ptr8 + SPSC_STORAGE_CACHE_LINE_SIZE), # read_ix (0-based)
             reinterpret(Ptr{UInt64}, ptr8 + SPSC_STORAGE_CACHE_LINE_SIZE * 2), # write_ix (0-based)
         )
+
         # register finalizer to free memory on GC collection
-        finalizer(finalizer, obj)
+        finalizer(finalizer_fn, obj)
+
         obj
     end
 
     """
     Initializes new SPSC storage with the given memory region.
 
-    Note that `storage_size` is the total size of the memory region,
-    not just `buffer_size`. `storage_size = SPSC_STORAGE_BUFFER_OFFSET + buffer_size`.
+    Note that `storage_size` is the total size of the memory region, not just `buffer_size`.
+    The total size is calculated as follows: `storage_size = SPSC_STORAGE_BUFFER_OFFSET + buffer_size`.
     """
-    SPSCStorage(ptr::Ptr{T}, storage_size::Integer; finalizer_fn::Function=s -> nothing) where T = begin
+    function SPSCStorage(
+        ptr::Ptr{T},
+        storage_size::Integer
+        ;
+        finalizer_fn::FFn=s -> nothing
+    ) where {T,FFn<:Function}
         ptr8::Ptr{UInt8} = reinterpret(Ptr{UInt8}, ptr)
 
         # write storage metadata to memory region
         spsc_storage_set_metadata!(ptr8, UInt64(storage_size), UInt64(0), UInt64(0))
 
-        SPSCStorage(ptr8; finalizer_fn=finalizer_fn)
+        SPSCStorage(ptr8, finalizer_fn=finalizer_fn)
     end
 
     """
@@ -92,11 +105,7 @@ mutable struct SPSCStorage
         # write storage metadata to memory region
         spsc_storage_set_metadata!(ptr, UInt64(storage_size), UInt64(0), UInt64(0))
 
-        function finalizer(storage::SPSCStorage)
-            aligned_free(storage.storage_ptr)
-        end
-
-        SPSCStorage(ptr; finalizer_fn=finalizer)
+        SPSCStorage(ptr; finalizer_fn=x -> aligned_free(x.storage_ptr))
     end
 end
 
@@ -106,8 +115,4 @@ function spsc_storage_set_metadata!(storage_ptr::Ptr{UInt8}, storage_size::UInt6
     unsafe_store!(reinterpret(Ptr{UInt64}, storage_ptr + SPSC_STORAGE_CACHE_LINE_SIZE), read_ix, :release) # read_ix (0-based)
     unsafe_store!(reinterpret(Ptr{UInt64}, storage_ptr + SPSC_STORAGE_CACHE_LINE_SIZE * 2), write_ix, :release) # write_ix (0-based)
     nothing
-end
-
-function Base.finalizer(storage::SPSCStorage)
-    storage.finalizer_fn(storage)
 end

@@ -1,8 +1,9 @@
 occursin("bench", pwd()) || cd("bench");
 
 using ThreadPinning
-using SPSCQueue
-using SPSCQueue.SharedMemory
+using PosixIPC.Queues
+using PosixIPC.Queues.SPSC
+using PosixIPC.SharedMemory
 
 include("../src/rdtsc.jl");
 
@@ -15,7 +16,7 @@ function producer(queue::SPSCQueueVar)
     size = 8
     data = UInt64[0]
     data_ptr = pointer(data)
-    msg = SPSCMessage(data_ptr, size)
+    msg = Message(data_ptr, size)
     i = 0
     while true
         i += 1
@@ -37,7 +38,7 @@ function consumer(queue::SPSCQueueVar)
     cycles_per_ns = measure_rdtsc_cycles_per_ns()
     println("RDTSC cycles per ns: $cycles_per_ns")
 
-    log_interval = 10_000_000
+    log_interval = 1_000_000
     last_clock = rdtsc()
     counter::Int = 0
     latency_sum::UInt64 = 0
@@ -70,27 +71,27 @@ end
 
 
 function run()
+    buffer_size = 100_000 # bytes
+
     # --------------------
     # in-memory
-    buffer_size = 100_000 # bytes
     storage = SPSCStorage(buffer_size)
 
     # --------------------
     # shared memory buffer only
-    # shm_fd, shm_size, buffer_ptr = shm_open(
-    #     "pubsub_test_1"
-    #     # "bybit_orderbook_linear_julia_test"
-    #     # "bybit_trades_linear_julia_test"
-    #     ;
-    #     # shm_flags = Base.Filesystem.JL_O_CREAT |
+    # shm = shm_open(
+    #     "pubsub_test_1",
+    #     # "bybit_orderbook_linear_julia_test",
+    #     # "bybit_trades_linear_julia_test",
+    #     # oflag = Base.Filesystem.JL_O_CREAT |
     #     #     Base.Filesystem.JL_O_RDWR |
     #     #     Base.Filesystem.JL_O_TRUNC,
-    #     shm_flags=Base.Filesystem.JL_O_RDWR,
-    #     shm_mode=0o666,
+    #     oflag=Base.Filesystem.JL_O_RDWR,
+    #     mode=0o666,
     #     size=buffer_size
     # )
-    # storage = SPSCStorage(buffer_ptr, shm_size)
-    # # storage = SPSCStorage(buffer_ptr) # use if opening existing initialized shared memory
+    # storage = SPSCStorage(shm.ptr, shm.size)
+    # # storage = SPSCStorage(shm.ptr) # use if opening existing initialized shared memory
 
     println("storage_size:       $(storage.storage_size)")
     println("buffer_size:        $(storage.buffer_size)")
@@ -100,16 +101,14 @@ function run()
     # create variable-element size SPSC queue
     queue = SPSCQueueVar(storage)
 
-    p_thread = @tspawnat 3 producer(queue) # 1-based indexing
-    c_thread = @tspawnat 5 consumer(queue) # 1-based indexing
+    # spawn producer thread on core 3
+    p_thread = ThreadPinning.@spawnat 3 producer(queue) # 1-based indexing
 
-    # setaffinity([4]) # 0-based
-    # consumer(queue)
-    # setaffinity([2]) # 0-based
-    # producer(queue)
+    # run consumer on main thread (core 5)
+    pinthread(4) # 0-based indexing
+    consumer(queue)
 
     wait(p_thread)
-    wait(c_thread)
 end
 
 GC.enable(false)

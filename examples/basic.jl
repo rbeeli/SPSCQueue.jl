@@ -1,5 +1,6 @@
 using ThreadPinning
-using SPSCQueue
+using PosixIPC.Queues
+using PosixIPC.Queues.SPSC
 
 function producer(queue::SPSCQueueVar, iterations::Int64)
     println("producer started")
@@ -9,7 +10,7 @@ function producer(queue::SPSCQueueVar, iterations::Int64)
     data = Int64[0]
     GC.@preserve data begin
         data_ptr = pointer(data)
-        msg = SPSCMessage(data_ptr, size)
+        msg = Message(data_ptr, size)
         for counter in 1:iterations
             # store counter value in message
             unsafe_store!(data_ptr, counter)
@@ -61,8 +62,8 @@ function run()
 
     # spawn producer and consumer threads, pin them to cores 3 and 5
     iterations = 1_000_000
-    p_thread = @tspawnat 3 producer(queue, iterations) # 1-based indexing
-    c_thread = @tspawnat 5 consumer(queue, iterations) # 1-based indexing
+    p_thread = ThreadPinning.@spawnat 3 producer(queue, iterations) # 1-based indexing
+    c_thread = ThreadPinning.@spawnat 5 consumer(queue, iterations) # 1-based indexing
 
     wait(p_thread)
     wait(c_thread)
